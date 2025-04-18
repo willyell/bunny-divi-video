@@ -45,8 +45,12 @@ add_action( 'admin_init', function() {
         return;
     }
     // Register TinyMCE plugin script
+        // Register TinyMCE plugin script (ensure file exists)
     add_filter( 'mce_external_plugins', function( $plugins ) {
-        $plugins['bunny_video'] = plugin_dir_url( __FILE__ ) . 'js/bunny-tinymce.js';
+        $js_file = plugin_dir_path( __FILE__ ) . 'js/bunny-tinymce.js';
+        if ( file_exists( $js_file ) ) {
+            $plugins['bunny_video'] = plugin_dir_url( __FILE__ ) . 'js/bunny-tinymce.js';
+        }
         return $plugins;
     });
     // Add button to toolbar
@@ -80,32 +84,62 @@ function register_bunny_divi_module() {
         }
 
         public function get_fields() {
-            $api_key = 'fcc29d6f-009b-4aa2-a97ac29f8bfe-6c27-4d36';
-            $lib_id  = '353748';
-            $options = array( '' => esc_html__( 'No videos found', 'bunny-divi' ) );
-
-            $response = wp_remote_get( "https://video.bunnycdn.com/library/{$lib_id}/videos", array(
-                'headers' => array( 'AccessKey' => $api_key ),
-            ) );
-            if ( ! is_wp_error( $response ) ) {
-                $data = json_decode( wp_remote_retrieve_body( $response ), true );
-                if ( ! empty( $data['items'] ) && is_array( $data['items'] ) ) {
-                    $options = array();
-                    foreach ( $data['items'] as $video ) {
-                        if ( isset( $video['guid'], $video['title'] ) ) {
-                            $options[ $video['guid'] ] = $video['title'];
+            // Fetch list of libraries via Bunny Master API
+            $libraries = array();
+            $lib_resp = wp_remote_get('https://video.bunnycdn.com/library', array(
+                'headers' => array('AccessKey' => BUNNY_MASTER_API_KEY),
+            ));
+            if (!is_wp_error($lib_resp)) {
+                $lib_data = json_decode(wp_remote_retrieve_body($lib_resp), true);
+                if (isset($lib_data['items']) && is_array($lib_data['items'])) {
+                    foreach ($lib_data['items'] as $lib_item) {
+                        if (isset($lib_item['id'], $lib_item['name'])) {
+                            $libraries[$lib_item['id']] = $lib_item['name'];
                         }
                     }
                 }
             }
-
+            if (empty($libraries)) {
+                $libraries = array(BUNNY_LIBRARY_ID => 'Default Library');
+            }
+            // Determine selected library (existing prop or first)
+            $selected_lib = isset($this->props['library_id']) && $this->props['library_id']
+                ? $this->props['library_id']
+                : key($libraries);
+            // Fetch videos for selected library
+            $videos = array();
+            $vid_resp = wp_remote_get("https://video.bunnycdn.com/library/{$selected_lib}/videos", array(
+                'headers' => array('AccessKey' => BUNNY_MASTER_API_KEY),
+            ));
+            if (!is_wp_error($vid_resp)) {
+                $vid_data = json_decode(wp_remote_retrieve_body($vid_resp), true);
+                if (isset($vid_data['items']) && is_array($vid_data['items'])) {
+                    foreach ($vid_data['items'] as $video) {
+                        if (isset($video['guid'], $video['title'])) {
+                            $videos[$video['guid']] = $video['title'];
+                        }
+                    }
+                }
+            }
+            if (empty($videos)) {
+                $videos = array('' => esc_html__('No videos found', 'bunny-divi'));
+            }
             return array(
-                'video_id' => array(
-                    'label'           => esc_html__( 'Select Video', 'bunny-divi' ),
+                'library_id' => array(
+                    'label'           => esc_html__('Select Library', 'bunny-divi'),
                     'type'            => 'select',
-                    'options'         => $options,
+                    'options'         => $libraries,
+                    'default'         => $selected_lib,
                     'option_category' => 'basic_option',
-                    'description'     => esc_html__( 'Choose a Bunny Stream video.', 'bunny-divi' ),
+                    'description'     => esc_html__('Choose a Bunny Stream library.', 'bunny-divi'),
+                ),
+                'video_id' => array(
+                    'label'           => esc_html__('Select Video', 'bunny-divi'),
+                    'type'            => 'select',
+                    'options'         => $videos,
+                    'default'         => key($videos),
+                    'option_category' => 'basic_option',
+                    'description'     => esc_html__('Choose a Bunny Stream video.', 'bunny-divi'),
                 ),
             );
         }
@@ -140,6 +174,6 @@ function register_bunny_divi_module() {
 }
 // Hook into Divi builder initialization
 add_action( 'et_builder_ready', 'register_bunny_divi_module' );
-}
 
 // end of code script
+
