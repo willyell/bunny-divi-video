@@ -57,9 +57,13 @@ add_action( 'admin_init', function() {
 });
 
 // ------------------------------
+// ------------------------------
 // 3) Divi Module
 // ------------------------------
-if ( class_exists( 'ET_Builder_Module' ) ) {
+function register_bunny_divi_module() {
+    if ( ! class_exists( 'ET_Builder_Module' ) ) {
+        return;
+    }
     class Bunny_Stream_Module extends ET_Builder_Module {
         public $slug       = 'bunny_stream';
         public $vb_support = 'on';
@@ -82,7 +86,7 @@ if ( class_exists( 'ET_Builder_Module' ) ) {
 
             $response = wp_remote_get( "https://video.bunnycdn.com/library/{$lib_id}/videos", array(
                 'headers' => array( 'AccessKey' => $api_key ),
-            ));
+            ) );
             if ( ! is_wp_error( $response ) ) {
                 $data = json_decode( wp_remote_retrieve_body( $response ), true );
                 if ( ! empty( $data['items'] ) && is_array( $data['items'] ) ) {
@@ -111,7 +115,7 @@ if ( class_exists( 'ET_Builder_Module' ) ) {
             if ( ! $video_id ) {
                 return '<p>Please select a video in module settings.</p>';
             }
-            $zone = '353748';
+            $zone       = '353748';
             $iframe_src = esc_url( "https://iframe.mediadelivery.net/embed/{$zone}/{$video_id}?autoplay=false" );
 
             ob_start();
@@ -131,7 +135,11 @@ if ( class_exists( 'ET_Builder_Module' ) ) {
             return ob_get_clean();
         }
     }
+    // Instantiate the module
     new Bunny_Stream_Module();
+}
+// Hook into Divi builder initialization
+add_action( 'et_builder_ready', 'register_bunny_divi_module' );
 }
 
 // end of code script
